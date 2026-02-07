@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nocturne - Connected AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #02040a;
+            --bg-gradient: radial-gradient(circle at 50% 10%, #1a2c5e 0%, #02040a 80%);
+            --glass-bg: rgba(10, 20, 40, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glow-gold: #ffd700;
+            --glow-cyan: #4fffc0;
+            --text-primary: #f0f4f8;
+            --text-secondary: #94a3b8;
+            --message-bot-bg: rgba(255, 255, 255, 0.03);
+            --message-user-bg: rgba(255, 215, 0, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Quicksand', sans-serif;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+        }
+
+        body {
+            background: var(--bg-deep);
+            background-image: var(--bg-gradient);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: var(--text-primary);
+            position: relative;
+        }
+
+        /* Ambient Noise Texture */
+        .noise-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        /* Canvas for Particles */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+
+        /* Main UI Container */
+        .interface-container {
+            position: relative;
+            z-index: 10;
+            width: 95%;
+            max-width: 420px;
+            height: 85vh;
+            display: flex;
+            flex-direction: column;
+            perspective: 1000px;
+        }
+
+        /* The Glass Card */
+        .chat-card {
+            flex: 1;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 30px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 
+                0 20px 50px rgba(0, 0, 0, 0.5),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+            overflow: hidden;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+            animation: card-entrance 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        @keyframes card-entrance {
+            from { opacity: 0; transform: translateY(40px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* Header */
+        .header {
+            padding: 24px;
+            text-align: center;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.03), transparent);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            position: relative;
+        }
+
+        .header h2 {
+            font-weight: 300;
+            font-size: 1.4rem;
+            letter-spacing: 2px;
+            background: linear-gradient(to right, #fff, #ffd700, #fff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            background-size: 200% auto;
+            animation: shine 5s linear infinite;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--glow-gold);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--glow-gold);
+            margin-right: 8px;
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes shine {
+            to { background-position: 200% center; }
+        }
+
+        @keyframes pulse-dot {
+            0% { opacity: 0.5; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.2); }
+            100% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        /* Messages */
+        .messages-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 85%;
+            padding: 14px 18px;
+            border-radius: 20px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            position: relative;
+            transform-origin: bottom left;
+            animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            word-wrap: break-word;
+        }
+
+        @keyframes pop-in {
+            from { opacity: 0; transform: scale(0.8) translateY(20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .bot {
+            align-self: flex-start;
+            background: var(--message-bot-bg);
+            border-bottom-left-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+        }
+
+        .user {
+            align-self: flex-end;
+            background: var(--message-user-bg);
+            border-bottom-right-radius: 4px;
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        }
+
+        /* Typing Indicator */
+        .typing-container {
+            padding: 0 20px 10px;
+            display: none; /* Hidden by default */
+        }
+        
+        .firefly-dots {
+            display: flex;
+            gap: 6px;
+        }
+        
+        .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--glow-gold);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+            box-shadow: 0 0 8px var(--glow-gold);
+        }
+        
+        .dot:nth-child(1) { animation-delay: -0.32s; }
+        .dot:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Input Area */
+        .input-wrapper {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-radius: 0 0 30px 30px;
+        }
+
+        .input-field {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 14px 16px;
+            color: #fff;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .input-field:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 215, 0, 0.3);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.05);
+        }
+
+        /* PREMIUM BUTTON STYLING */
+        .send-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: rgba(255, 215, 0, 0.1); /* Subtle gold tint */
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease-out; /* Snappy transition */
+            color: var(--glow-gold);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .send-btn:hover {
+            background: var(--glow-gold);
+            color: #000;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .send-btn:active {
+            transform: scale(0.95);
+        }
+
+        .send-btn svg {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
+            transition: transform 0.2s ease;
+        }
+
+        .send-btn:hover svg {
+            transform: translateX(2px) scale(1.1);
+        }
+
+        /* Markdown-ish styling for bot responses */
+        .bot p { margin-bottom: 8px; }
+        .bot p:last-child { margin-bottom: 0; }
+        .bot code { 
+            background: rgba(0,0,0,0.3); 
+            padding: 2px 5px; 
+            border-radius: 4px; 
+            font-family: monospace;
+            font-size: 0.9em;
+            color: #ff9;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="noise-overlay"></div>
+    <canvas id="particle-canvas"></canvas>
+
+    <div class="interface-container" id="tilt-card">
+        <div class="chat-card">
+            <div class="header">
+                <h2><span class="status-dot"></span>Nocturne</h2>
+            </div>
+            
+            <div class="messages-area" id="messages-area">
+                <div class="message bot">
+                    I am connected to the stars. Speak, traveler... 🌙
+                </div>
+            </div>
+
+            <div class="typing-container" id="typing-indicator">
+                <div class="firefly-dots">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
+            </div>
+
+            <form class="input-wrapper" id="chat-form">
+                <input type="text" class="input-field" id="user-input" placeholder="Whisper something..." autocomplete="off">
+                <button type="submit" class="send-btn">
+                    <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * PART 1: ADVANCED PARTICLE SYSTEM (Fireflies)
+         */
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let particles = [];
+        let mouse = { x: -1000, y: -1000 };
+
+        // Resize Handling
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Mouse Tracking
+        document.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            
+            // Subtle 3D Tilt Effect on Card
+            const card = document.getElementById('tilt-card');
+            const xVal = (window.innerWidth / 2 - e.pageX) / 40;
+            const yVal = (window.innerHeight / 2 - e.pageY) / 40;
+            card.style.transform = `rotateY(${xVal}deg) rotateX(${yVal}deg)`;
+        });
+
+        class Firefly {
+            constructor() {
+                this.reset(true);
+            }
+
+            reset(initial = false) {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 2 + 0.5;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.life = Math.random() * 100;
+                this.alpha = 0;
+                this.maxAlpha = Math.random() * 0.6 + 0.2;
+                this.hue = Math.random() > 0.9 ? 160 : 50; // Mostly gold, rarely teal
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life++;
+
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 150) {
+                    const angle = Math.atan2(dy, dx);
+                    this.vx -= Math.cos(angle) * 0.5;
+                    this.vy -= Math.sin(angle) * 0.5;
+                }
+
+                this.vx *= 0.95; 
+                this.vy *= 0.95;
+
+                this.vx += (Math.random() - 0.5) * 0.05;
+                this.vy += (Math.random() - 0.5) * 0.05;
+
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                this.alpha = Math.abs(Math.sin(this.life * 0.03)) * this.maxAlpha;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 4);
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${this.alpha})`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 100%, 50%, 0)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 80; i++) {
+            particles.push(new Firefly());
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+            
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.05)';
+            ctx.lineWidth = 0.5;
+            
+            particles.forEach((p, index) => {
+                p.update();
+                p.draw();
+                
+                for (let j = index + 1; j < particles.length; j++) {
+                    const p2 = particles[j];
+                    const dx = p.x - p2.x;
+                    const dy = p.y - p2.y;
+                    const distance = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (distance < 100) {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        /**
+         * PART 2: CONNECTED CHAT LOGIC (OpenRouter)
+         */
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const messagesArea = document.getElementById('messages-area');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        // --- CONFIGURATION ---
+        const OR_KEY = "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";
+        const OR_MODEL = "stepfun/step-3.5-flash:free";
+        
+        // System prompt to maintain the "Firefly/Forest Spirit" persona
+        const SYSTEM_PROMPT = {
+            role: "system", 
+            content: "You are Nocturne, a mystical forest spirit living among fireflies. You speak in a calm, slightly poetic, and soothing manner. Keep responses relatively short (2-3 sentences mostly) and atmospheric. Do not break character. You are helpful but maintain a magical vibe."
+        };
+
+        // Chat History for Context
+        let chatHistory = [SYSTEM_PROMPT];
+
+        function scrollToBottom() {
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        function addMessage(text, isUser) {
+            const div = document.createElement('div');
+            div.className = `message ${isUser ? 'user' : 'bot'}`;
+            div.innerHTML = text.replace(/\n/g, '<br>'); // Simple line break handling
+            messagesArea.appendChild(div);
+            scrollToBottom();
+        }
+
+        async function fetchAIResponse(userMessage) {
+            try {
+                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${OR_KEY}`,
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://localhost:3000", // Required by OpenRouter for some free tiers
+                        "X-Title": "Firefly Chatbot"
+                    },
+                    body: JSON.stringify({
+                        "model": OR_MODEL,
+                        "messages": chatHistory
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    console.error("API Error:", err);
+                    return "The spirits are quiet (API Error). Check console.";
+                }
+
+                const data = await response.json();
+                const reply = data.choices[0].message.content;
+                return reply;
+
+            } catch (error) {
+                console.error("Network Error:", error);
+                return "A shadow blocks my vision (Network Error).";
+            }
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // 1. Show User Message
+            addMessage(text, true);
+            userInput.value = '';
+            
+            // 2. Add to history
+            chatHistory.push({ role: "user", content: text });
+
+            // 3. Visual Effects (Firefly Scatter)
+            for(let i=0; i<5; i++) {
+                const p = particles[Math.floor(Math.random() * particles.length)];
+                p.vx = (Math.random() - 0.5) * 15;
+                p.vy = (Math.random() - 0.5) * 15;
+            }
+
+            // 4. Show Typing
+            typingIndicator.style.display = 'block';
+            scrollToBottom();
+
+            // 5. Call API
+            const botReply = await fetchAIResponse(text);
+
+            // 6. Hide Typing & Show Response
+            typingIndicator.style.display = 'none';
+            addMessage(botReply, false);
+            
+            // 7. Add bot reply to history
+            chatHistory.push({ role: "assistant", content: botReply });
+        });
+    </script>
+</body>
+</html>
